@@ -99,11 +99,11 @@ int main()
     pthread_create(&t, NULL, quickSort, (void *)boundary);
     pthread_join(t, NULL);
     clock_t endTime = clock();
-    printf("%lf\n", ((double)(endTime - startTime)) / CLOCKS_PER_SEC);
+    // printf("%lf\n", ((double)(endTime - startTime)) / CLOCKS_PER_SEC);
 
-    // for (i = 0; i < n; i++)
-    //     printf("%lld ", arr[i]);
-    // printf("\n");
+    for (i = 0; i < n; i++)
+        printf("%lld ", arr[i]);
+    printf("\n");
 
     return 0;
 }

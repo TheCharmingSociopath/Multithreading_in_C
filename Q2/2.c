@@ -7,18 +7,18 @@
 #define tableServing 1
 #define tableNotServing 0
 #define minArrival 1
-#define maxArrival 10
+#define maxArrival 5
 #define minPrepareTime 2
 #define minNumVesselsPrepared 1
 #define minVesselCapacity 25
 #define maxPrepareTime 5
 #define maxNumVesselsPrepared 10
 #define maxVesselCapacity 50
-#define minNumSlots 1
+#define minNumSlots 3
 #define maxNumSlots 10
 
 int numRobo, numTable, numStudents, numWaitingStudents = 0, numStudentsServed = 0;
-pthread_mutex_t mutex1, mutex2, mutex3;
+pthread_mutex_t mutex1, mutex2, mutex3, mutex4;
 
 typedef struct robot
 {
@@ -55,7 +55,9 @@ void *robotThread(void *arg)
 {
     while (1)
     {
-        if (numStudentsServed == numStudents)
+        // printf("feknjfnj %d\n", numStudentsServed);
+
+        if (numStudents == numStudentsServed)
             return NULL;
         int idx = ((robot *)arg)->idx;
         robots[idx].numVesselsPrepared = randomGen(minNumVesselsPrepared, maxNumVesselsPrepared);
@@ -72,6 +74,8 @@ void biryaniReady(int roboIdx, int numVessels, int vesselCapacity)
 {
     while (numVessels > 0)
     {
+        if (numStudents == numStudentsServed)
+            return;
         pthread_mutex_lock(&mutex1);
 
         for (int i = 0; i < numTable && numVessels > 0; ++i)
@@ -94,23 +98,22 @@ void *tableThread(void *arg)
 {
     while (1)
     {
-        if (numStudentsServed >= numStudents)
+        if (numStudentsServed == numStudents)
             return NULL;
         int idx = ((table *)arg)->idx;
         while (tables[idx].servingMode == tableNotServing)
             ;
-        // printf("Serving table %d entering Serving Phase.\n", idx);
+        printf("Serving table %d entering Serving Phase.\n", idx);
         tables[idx].numSlots = randomGen(minNumSlots, maxNumSlots);
-        printf("feknjfnj %d\n", numWaitingStudents);
-        // printf("Serving Table %d is ready to serve with %d slots.\n", idx, tables[idx].numSlots);
+        printf("Serving Table %d is ready to serve with %d slots.\n", idx, tables[idx].numSlots);
         readyToServeTable(idx);
     }
 }
 
 void readyToServeTable(int tableIdx)
 {
-    printf("%d %d\n", tables[tableIdx].numSlots, tables[tableIdx].servingMode);
-    while (tables[tableIdx].numSlots > 0 && tables[tableIdx].servingMode == tableServing)
+    // printf("%d %d\n", tables[tableIdx].numSlots, tables[tableIdx].servingMode);
+    while (tables[tableIdx].numSlots > 0 && tables[tableIdx].servingMode == tableServing && numStudentsServed != numStudents)
         ;
 }
 
@@ -122,22 +125,21 @@ void *studentThread(void *arg)
 
     pthread_mutex_lock(&mutex2);
     ++numWaitingStudents;
-    // pthread_mutex_unlock(&mutex1);
+    pthread_mutex_unlock(&mutex2);
 
     printf("Student %d is waiting to be allocated a slot on the serving table.\n", idx);
 
     int tableIdx = waitForSlot();
-    tables[tableIdx].containerStatus -= 1;
+    pthread_mutex_lock(&mutex4);
+    --numWaitingStudents;
+    tables[tableIdx].containerStatus = tables[tableIdx].containerStatus - 1;
     ++numStudentsServed;
     if (tables[tableIdx].containerStatus == 0)
     {
         tables[tableIdx].servingMode = tableNotServing;
         printf("Serving Container of Table %d is empty, waiting for refill.\n", tableIdx);
     }
-
-    // pthread_mutex_lock(&mutex1);
-    --numWaitingStudents;
-    pthread_mutex_unlock(&mutex2);
+    pthread_mutex_unlock(&mutex4);
 
     printf("Student %d assigned a slot on the serving table %d and waiting to be served.\n", idx, tableIdx);
     studentInSlot(tableIdx, idx);
@@ -153,8 +155,8 @@ int waitForSlot()
         {
             if (tables[i].numSlots > 0 && tables[i].servingMode == tableServing)
             {
-                tables[i].numSlots -= 1;
-                pthread_mutex_unlock(&mutex1);
+                tables[i].numSlots = tables[i].numSlots - 1;
+                pthread_mutex_unlock(&mutex3);
                 return i;
             }
         }
@@ -174,6 +176,7 @@ void main()
     pthread_mutex_init(&mutex1, NULL);
     pthread_mutex_init(&mutex2, NULL);
     pthread_mutex_init(&mutex3, NULL);
+    pthread_mutex_init(&mutex4, NULL);
 
     for (int i = 0; i < numRobo; ++i)
     {
@@ -197,11 +200,14 @@ void main()
         students[i].idx = i;
         students[i].arrivalTime = randomGen(minArrival, maxArrival);
         students[i].served = 0;
-        pthread_create(&tables[i].tid, NULL, tableThread, (void *)&students[i]);
+        pthread_create(&students[i].tid, NULL, studentThread, (void *)&students[i]);
     }
 
     for (int i = 0; i < numRobo; ++i) // Wait for robots
+    {
         pthread_join(robots[i].tid, NULL);
+    }
+    
     for (int i = 0; i < numStudents; ++i) // wait for students
         pthread_join(students[i].tid, NULL);
     for (int i = 0; i < numTable; ++i) // wait for tables
@@ -210,6 +216,7 @@ void main()
     pthread_mutex_destroy(&mutex1);
     pthread_mutex_destroy(&mutex2);
     pthread_mutex_destroy(&mutex3);
+    pthread_mutex_destroy(&mutex4);
     printf("Simulation Over.\n");
     return;
 }
